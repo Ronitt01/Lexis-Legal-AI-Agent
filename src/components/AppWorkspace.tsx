@@ -245,6 +245,11 @@ export default function AppWorkspace() {
   const [activeCitationId, setActiveCitationId] = useState<string | null>(null);
   
   // Premium Features State
+  const [customKey, setCustomKey] = useState<string>(() => {
+    return localStorage.getItem("lexis_custom_api_key") || "";
+  });
+  const [showKeyInput, setShowKeyInput] = useState(false);
+
   const [apiStatus, setApiStatus] = useState<{
     geminiActive: boolean;
     model: string;
@@ -261,17 +266,38 @@ export default function AppWorkspace() {
         return res.json();
       })
       .then(data => {
-        setApiStatus(data);
+        const envKey = (import.meta as any).env?.VITE_GEMINI_API_KEY;
+        const activeClientKey = envKey || customKey;
+        if (!data.geminiActive && activeClientKey && activeClientKey !== "MY_GEMINI_API_KEY" && activeClientKey.trim() !== "") {
+          setApiStatus({
+            geminiActive: true,
+            model: "gemini-2.5-flash (Client Direct Override)",
+            mode: "CLIENT_DIRECT_GEMINI"
+          });
+        } else {
+          setApiStatus(data);
+        }
       })
       .catch(err => {
-        console.warn("Express server unavailable. Setting client-side sandbox indicator state.", err);
-        setApiStatus({
-          geminiActive: false,
-          model: "Local Client-Side Parser",
-          mode: "LOCAL_HEURISTICS_BACKUP"
-        });
+        console.warn("Express server unavailable. Checking for direct browser Gemini capabilities.", err);
+        const envKey = (import.meta as any).env?.VITE_GEMINI_API_KEY;
+        const activeClientKey = envKey || customKey;
+        
+        if (activeClientKey && activeClientKey !== "MY_GEMINI_API_KEY" && activeClientKey.trim() !== "") {
+          setApiStatus({
+            geminiActive: true,
+            model: "gemini-2.5-flash (Client Direct)",
+            mode: "CLIENT_DIRECT_GEMINI"
+          });
+        } else {
+          setApiStatus({
+            geminiActive: false,
+            model: "Local Client-Side Parser",
+            mode: "LOCAL_HEURISTICS_BACKUP"
+          });
+        }
       });
-  }, []);
+  }, [customKey]);
   
   // Custom file system trigger
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -713,6 +739,113 @@ Verify critical parameters with official legal counsel under active jurisdiction
     setAnswer("");
     setConfidence(null);
     setCitations([]);
+
+    const envKey = (import.meta as any).env?.VITE_GEMINI_API_KEY;
+    const activeKey = envKey || customKey;
+    const isClientDirect = apiStatus?.mode === "CLIENT_DIRECT_GEMINI" || (activeKey && activeKey.trim() !== "" && activeKey !== "MY_GEMINI_API_KEY");
+
+    if (isClientDirect && activeKey) {
+      try {
+        const docContent = activeDoc.content;
+        const docName = activeDoc.name;
+        
+        const promptText = `You are LexisAI, an elite hallucination-free AI legal intelligence platform with source-verified citations.
+Your goal is to answer the user's question about the provided legal document with absolute veracity and accuracy.
+
+INSTRUCTIONS:
+1. Conduct an exhaustive search of the provided contract content.
+2. Formulate a verified answer, keeping it direct, factual, and written in a professional, premium enterprise SaaS style.
+3. If the contract does not contain information to support an answer, output: "This information is not present in the provided contract documents." with a confidence score of 0.
+4. Extract exactly verbatim snippets from the contract as source text references to prove your findings. Assign approximate page values where sections fall. If no page info is known, estimate page coordinates elegantly.
+5. Do NOT include any unverified statements. If you state a fact, it MUST have a citation quote in the citations array.
+6. Return your answer ONLY in valid JSON format. Do not prepend markdown formatting other than pureJSON.
+
+CONTRACT DOCUMENT (${docName}):
+"""
+${docContent}
+"""
+
+QUESTION:
+${question}
+`;
+
+        const responseObj = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${activeKey}`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            contents: [{
+              parts: [{
+                text: promptText
+              }]
+            }],
+            generationConfig: {
+              responseMimeType: "application/json",
+              responseSchema: {
+                type: "OBJECT",
+                properties: {
+                  answer: {
+                    type: "STRING",
+                    description: "A premium, clear, authoritative legal answer grounded exclusively in the uploaded contract."
+                  },
+                  confidence: {
+                    type: "INTEGER",
+                    description: "Confidence value between 0 and 100 based on the presence of direct evidence."
+                  },
+                  citations: {
+                    type: "ARRAY",
+                    description: "Citations highlighting exact literal clauses which support the answer.",
+                    items: {
+                      type: "OBJECT",
+                      properties: {
+                        id: { type: "STRING" },
+                        page: {
+                          type: "INTEGER",
+                          description: "Page number matching the location of this clause."
+                        },
+                        text: {
+                          type: "STRING",
+                          description: "Exact matched literal sentence from the contract."
+                        },
+                        context: {
+                          type: "STRING",
+                          description: "Surrounding sentence snippet providing immediate contextual coherence."
+                        },
+                        confidence: { type: "INTEGER" }
+                      },
+                      required: ["id", "page", "text", "context", "confidence"]
+                    }
+                  }
+                },
+                required: ["answer", "confidence", "citations"]
+              }
+            }
+          })
+        });
+
+        if (!responseObj.ok) {
+          throw new Error(`Direct client Gemini key call fell through: ${responseObj.statusText}`);
+        }
+
+        const rawJsonOutput = await responseObj.json();
+        const textValue = rawJsonOutput?.candidates?.[0]?.content?.parts?.[0]?.text;
+        
+        if (textValue) {
+          const parsed = JSON.parse(textValue.trim());
+          setAnswer(parsed.answer);
+          setConfidence(parsed.confidence);
+          setCitations(parsed.citations || []);
+          if (parsed.citations && parsed.citations.length > 0) {
+            setActiveCitationId(parsed.citations[0].id);
+          }
+          setIsGenerating(false);
+          return; // Skip server fetch on successful client direct query
+        }
+      } catch (clientGeminiError) {
+        console.warn("Direct browser Gemini call issue, falling back to server/local presets.", clientGeminiError);
+      }
+    }
 
     try {
       const response = await fetch("/api/analyze", {
@@ -1157,23 +1290,70 @@ Verify critical parameters with official legal counsel under active jurisdiction
                       </div>
                     </div>
 
-                    {apiStatus && (
-                      <div className={`mb-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 px-3 py-2 rounded-lg text-[10px] font-mono border ${
-                        apiStatus.geminiActive 
-                          ? "bg-purple-950/20 border-purple-500/25 text-purple-300" 
-                          : "bg-amber-950/20 border-amber-500/25 text-amber-300"
-                      }`}>
-                        <div className="flex items-center gap-2">
-                          <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${apiStatus.geminiActive ? 'bg-purple-450 shadow-[0_0_4px_#c084fc] animate-pulse' : "bg-amber-450 shadow-[0_0_4px_#d97706] animate-pulse"}`}></span>
-                          <span>
-                            {apiStatus.geminiActive 
-                              ? `API SECURELY INTEGRATED: Grounded response processed with Gemini Cloud Live (${apiStatus.model}).`
-                              : "LOCAL DISCONTINUITY WARNING: No active GEMINI_API_KEY environment variable configured on backend. Local fallback mode."}
-                          </span>
+                     {apiStatus && (
+                      <div className="flex flex-col gap-2">
+                        <div className={`flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 px-3 py-2 rounded-lg text-[10px] font-mono border ${
+                          apiStatus.geminiActive 
+                            ? "bg-purple-950/20 border-purple-500/25 text-purple-300" 
+                            : "bg-amber-950/20 border-amber-500/25 text-amber-300"
+                        }`}>
+                          <div className="flex items-center gap-2">
+                            <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${apiStatus.geminiActive ? 'bg-purple-450 shadow-[0_0_4px_#c084fc] animate-pulse' : "bg-amber-450 shadow-[0_0_4px_#d97706] animate-pulse"}`}></span>
+                            <span>
+                              {apiStatus.geminiActive 
+                                ? `API SECURELY INTEGRATED: Grounded response processed with Gemini Cloud Live (${apiStatus.model}).`
+                                : "LOCAL DISCONTINUITY WARNING: No active GEMINI_API_KEY environment variable configured on backend. Local fallback mode."}
+                            </span>
+                          </div>
+                          {!apiStatus.geminiActive ? (
+                            <button
+                              onClick={() => setShowKeyInput(!showKeyInput)}
+                              className="text-[8.5px] uppercase tracking-wider font-bold border border-amber-500/30 px-1.5 py-0.5 rounded bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 shrink-0 self-start sm:self-auto select-none cursor-pointer duration-150"
+                            >
+                              🔑 Add Client Key for Vercel
+                            </button>
+                          ) : (
+                            apiStatus.mode === "CLIENT_DIRECT_GEMINI" && (
+                              <button 
+                                onClick={() => {
+                                  localStorage.removeItem("lexis_custom_api_key");
+                                  setCustomKey("");
+                                  window.location.reload();
+                                }}
+                                className="text-[8.5px] uppercase tracking-wider font-bold border border-purple-500/30 px-1.5 py-0.5 rounded bg-purple-500/10 hover:bg-purple-500/20 text-purple-300 shrink-0 self-start sm:self-auto select-none cursor-pointer duration-150"
+                              >
+                                Disconnect Key
+                              </button>
+                            )
+                          )}
                         </div>
-                        {!apiStatus.geminiActive && (
-                          <div className="text-[8.5px] uppercase tracking-wider font-bold border border-amber-500/30 px-1.5 py-0.5 rounded bg-amber-500/10 shrink-0 self-start sm:self-auto select-none">
-                            🔑 API Key Required for Real Gemini
+
+                        {showKeyInput && !apiStatus.geminiActive && (
+                          <div className="bg-[#191108]/40 border border-amber-500/25 rounded-lg p-3 text-[10px] font-mono text-amber-300 mb-2">
+                            <p className="mb-2 leading-relaxed text-slate-300">
+                              To run real Gemini on Vercel without a backend server, you can set a <code className="text-amber-400 bg-black/40 px-1 rounded">VITE_GEMINI_API_KEY</code> environment variable in your Vercel Dashboard, or enter your Gemini API key below to securely activate it in this browser session (stored locally in browser cache):
+                            </p>
+                            <div className="flex gap-2">
+                              <input
+                                type="password"
+                                placeholder="AIzaSy..."
+                                value={customKey}
+                                onChange={(e) => {
+                                  setCustomKey(e.target.value);
+                                  localStorage.setItem("lexis_custom_api_key", e.target.value);
+                                }}
+                                className="flex-1 bg-black/45 border border-amber-500/20 rounded px-2.5 py-1 text-xs text-white focus:outline-none focus:border-amber-500/50"
+                              />
+                              <button
+                                onClick={() => {
+                                  setShowKeyInput(false);
+                                  window.location.reload();
+                                }}
+                                className="bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/35 px-3 py-1 rounded font-bold text-[9px] uppercase cursor-pointer text-amber-300"
+                              >
+                                Save & Activate
+                              </button>
+                            </div>
                           </div>
                         )}
                       </div>
