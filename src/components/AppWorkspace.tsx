@@ -949,6 +949,28 @@ Verify critical parameters with official legal counsel under active jurisdiction
                       </div>
                     </div>
 
+                    {apiStatus && (
+                      <div className={`mb-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 px-3 py-2 rounded-lg text-[10px] font-mono border ${
+                        apiStatus.geminiActive 
+                          ? "bg-purple-950/20 border-purple-500/25 text-purple-300" 
+                          : "bg-amber-950/20 border-amber-500/25 text-amber-300"
+                      }`}>
+                        <div className="flex items-center gap-2">
+                          <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${apiStatus.geminiActive ? 'bg-purple-450 shadow-[0_0_4px_#c084fc] animate-pulse' : "bg-amber-450 shadow-[0_0_4px_#d97706] animate-pulse"}`}></span>
+                          <span>
+                            {apiStatus.geminiActive 
+                              ? `API SECURELY INTEGRATED: Grounded response processed with Gemini Cloud Live (${apiStatus.model}).`
+                              : "LOCAL DISCONTINUITY WARNING: No active GEMINI_API_KEY environment variable configured on backend. Local fallback mode."}
+                          </span>
+                        </div>
+                        {!apiStatus.geminiActive && (
+                          <div className="text-[8.5px] uppercase tracking-wider font-bold border border-amber-500/30 px-1.5 py-0.5 rounded bg-amber-500/10 shrink-0 self-start sm:self-auto select-none">
+                            🔑 API Key Required for Real Gemini
+                          </div>
+                        )}
+                      </div>
+                    )}
+
                     {/* Answer content block */}
                     <div className="text-slate-200 text-xs sm:text-sm leading-relaxed pr-6 whitespace-pre-line">
                       {answer}
