@@ -1,0 +1,6 @@
+{
+  "name": "LexisAI",
+  "description": "Ask Contracts. Get Verified Answers. A hallucination-free AI legal intelligence platform with source-verified citations.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
