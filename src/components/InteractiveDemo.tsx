@@ -247,7 +247,7 @@ export default function InteractiveDemo() {
                 <div className="flex items-start gap-2.5">
                   <div className="w-5 h-5 rounded bg-purple-500/20 text-purple-400 text-[10px] font-mono flex items-center justify-center font-bold">⚖</div>
                   <div className="flex-1">
-                    <h4 className="text-purple-400 text-[10px] font-mono leading-none font-bold">VERIFIED LAW MODEL RESPONSE</h4>
+                    <h4 className="text-purple-400 text-[10px] font-mono leading-none font-bold">SAMPLE RESPONSE (PRE-WRITTEN, NOT A LIVE MODEL CALL)</h4>
                     <p className="text-slate-200 text-xs mt-1.5 leading-relaxed pr-10">
                       {analysisText}
                     </p>
@@ -272,7 +272,7 @@ export default function InteractiveDemo() {
                 {/* Floating Confidence metric bubble */}
                 <div className="absolute top-4 right-4 bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-[10px] font-mono font-bold px-2.5 py-1 rounded-full flex items-center gap-1.5">
                   <span className="w-1.5 h-1.5 bg-emerald-400 rounded-full animate-ping"></span>
-                  <span>CONFIDENCE: 98%</span>
+                  <span>PRE-WRITTEN EXAMPLE</span>
                 </div>
               </div>
             </div>

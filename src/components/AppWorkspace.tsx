@@ -241,6 +241,8 @@ export default function AppWorkspace() {
   // Response states
   const [answer, setAnswer] = useState<string>("");
   const [confidence, setConfidence] = useState<number | null>(null);
+  // Only Gemini answers carry a confidence; keyword-fallback answers keep it null.
+  const isModelAnswer = confidence !== null;
   const [citations, setCitations] = useState<Citation[]>([]);
   const [activeCitationId, setActiveCitationId] = useState<string | null>(null);
   
@@ -404,7 +406,7 @@ Generated On        : ${timestamp}
 Active Document     : ${activeDoc.name}
 Size                : ${activeDoc.size}
 Inquiry Question    : ${question}
-System Mode         : ${apiStatus?.geminiActive ? "Cloud Guided (Gemini 3.5 Flash)" : "Local Heuristic Analytics Fallback"}
+System Mode         : ${isModelAnswer ? "Gemini model answer" : "Keyword match, not AI-verified"}
 ======================================================================
 
 ANALYSIS ANSWER DETAILS:
@@ -414,8 +416,8 @@ ${answer}
 ----------------------------------------------------------------------
 CONFIDENCE METRIC & AUTHENTICATION COORDINATES:
 ----------------------------------------------------------------------
-Confidence Index    : ${confidence}% Verified Grounds Alignment
-Citations Count     : ${citations.length} Verified References Mapped
+Confidence Index    : ${isModelAnswer ? `${confidence}% (model-reported)` : "n/a (keyword match, not AI-verified)"}
+Citations Count     : ${citations.length} References
 
 VERIFIED CITATION CLAUSE LOGS:
 ${citations.map((c, idx) => `
@@ -423,7 +425,7 @@ ${citations.map((c, idx) => `
 - Page Coordinate  : Page ${c.page}
 - Verified Text    : "${c.text}"
 - Full Context     : "${c.context}"
-- Match Certainty  : ${c.confidence}% Match Ratio
+- Match Certainty  : ${isModelAnswer ? `${c.confidence}% Match Ratio` : "n/a (keyword match)"}
 `).join("\n")}
 
 ----------------------------------------------------------------------
@@ -733,7 +735,7 @@ Verify critical parameters with official legal counsel under active jurisdiction
 
       const resData = await response.json();
       setAnswer(resData.answer);
-      setConfidence(resData.confidence);
+      setConfidence(resData.source === "model" ? resData.confidence : null);
       setCitations(resData.citations || []);
       if (resData.citations && resData.citations.length > 0) {
         setActiveCitationId(resData.citations[0].id);
@@ -745,7 +747,7 @@ Verify critical parameters with official legal counsel under active jurisdiction
       const fallbackResult = performClientSideHeuristicAnalysis(activeDoc.id, activeDoc.content, question);
       
       setAnswer(fallbackResult.answer);
-      setConfidence(fallbackResult.confidence);
+      setConfidence(null); // keyword fallback: no model confidence
       setCitations(fallbackResult.citations);
       if (fallbackResult.citations && fallbackResult.citations.length > 0) {
         setActiveCitationId(fallbackResult.citations[0].id);
@@ -1140,10 +1142,15 @@ Verify critical parameters with official legal counsel under active jurisdiction
 
                       {/* Confidence Score meter bubble & Download report CTA */}
                       <div className="flex items-center gap-2">
-                        {confidence !== null && (
+                        {isModelAnswer ? (
                           <div className="flex items-center gap-1.5 bg-[#111d23] border border-emerald-500/20 text-emerald-400 text-[10px] font-mono font-bold px-2.5 py-1 rounded-full">
                             <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
                             <span>CONFIDENCE: {confidence}%</span>
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-1.5 bg-amber-950/20 border border-amber-500/25 text-amber-300 text-[10px] font-mono font-bold px-2.5 py-1 rounded-full">
+                            <AlertCircle className="w-3.5 h-3.5 text-amber-300" />
+                            <span>Keyword match, not AI-verified</span>
                           </div>
                         )}
                         <button
@@ -1159,16 +1166,18 @@ Verify critical parameters with official legal counsel under active jurisdiction
 
                     {apiStatus && (
                       <div className={`mb-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 px-3 py-2 rounded-lg text-[10px] font-mono border ${
-                        apiStatus.geminiActive 
-                          ? "bg-purple-950/20 border-purple-500/25 text-purple-300" 
+                        isModelAnswer
+                          ? "bg-purple-950/20 border-purple-500/25 text-purple-300"
                           : "bg-amber-950/20 border-amber-500/25 text-amber-300"
                       }`}>
                         <div className="flex items-center gap-2">
-                          <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${apiStatus.geminiActive ? 'bg-purple-450 shadow-[0_0_4px_#c084fc] animate-pulse' : "bg-amber-450 shadow-[0_0_4px_#d97706] animate-pulse"}`}></span>
+                          <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${isModelAnswer ? 'bg-purple-450 shadow-[0_0_4px_#c084fc] animate-pulse' : "bg-amber-450 shadow-[0_0_4px_#d97706] animate-pulse"}`}></span>
                           <span>
-                            {apiStatus.geminiActive 
-                              ? `API SECURELY INTEGRATED: Grounded response processed with Gemini Cloud Live (${apiStatus.model}).`
-                              : "LOCAL DISCONTINUITY WARNING: No active GEMINI_API_KEY environment variable configured on backend. Local fallback mode."}
+                            {isModelAnswer
+                              ? `Answered by Gemini (${apiStatus.model}).`
+                              : apiStatus.geminiActive
+                                ? "Gemini call failed: this answer is a keyword match, not AI-verified."
+                                : "No GEMINI_API_KEY on the server: this answer is a keyword match, not AI-verified."}
                           </span>
                         </div>
                         {!apiStatus.geminiActive && (
@@ -1208,7 +1217,7 @@ Verify critical parameters with official legal counsel under active jurisdiction
                                       <Hash className="w-3 h-3 text-purple-400" />
                                       <span>Page {c.page} Reference</span>
                                     </div>
-                                    <span className="text-[8px] border border-purple-500/10 bg-purple-500/5 px-1 py-0.2 rounded text-purple-300">{c.confidence}% certainty</span>
+                                    {isModelAnswer && <span className="text-[8px] border border-purple-500/10 bg-purple-500/5 px-1 py-0.2 rounded text-purple-300">{c.confidence}% certainty</span>}
                                   </div>
                                   <p className="line-clamp-2 italic text-[10px] leading-relaxed text-slate-300">
                                     "{c.text}"
@@ -1276,9 +1285,9 @@ Verify critical parameters with official legal counsel under active jurisdiction
                           <div className="mt-3 flex items-center justify-between text-[9px] text-emerald-600 font-sans font-bold uppercase">
                             <span className="flex items-center gap-1">
                               <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
-                              <span>Verified Clause Match</span>
+                              <span>{isModelAnswer ? "Verified Clause Match" : "Keyword match, not AI-verified"}</span>
                             </span>
-                            <span>{pinnedCitation.confidence}% certainty</span>
+                            {isModelAnswer && <span>{pinnedCitation.confidence}% certainty</span>}
                           </div>
                         </div>
 
