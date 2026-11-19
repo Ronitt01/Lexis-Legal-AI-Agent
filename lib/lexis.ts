@@ -167,7 +167,7 @@ ${question}
 `;
 
         const response = await ai.models.generateContent({
-          model: "gemini-3.5-flash",
+          model: "gemini-2.5-flash",
           contents: prompt,
           config: {
             responseMimeType: "application/json",
@@ -434,7 +434,7 @@ export function status(req: Request, res: Response) {
                     process.env.GEMINI_API_KEY.trim() !== "";
   res.json({
     geminiActive: hasApiKey,
-    model: "gemini-3.5-flash",
+    model: "gemini-2.5-flash",
     mode: hasApiKey ? "CLOUD_INTELLIGENCE" : "LOCAL_HEURISTICS_BACKUP",
     uptime: process.uptime()
   });
